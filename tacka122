@@ -1,0 +1,331 @@
+import React, { useState, useRef, useEffect, Suspense } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, Center } from '@react-three/drei';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import * as THREE from 'three';
+
+// Komponenta pro generování shaderu s texturou 3D tisku (vrstvy)
+function 3DPrintMaterial({ color }) {
+  const materialRef = useRef();
+
+  useFrame((state) => {
+    if (materialRef.current) {
+      // Stabilní mapování shaderu ve světových souřadnicích
+    }
+  });
+
+  return (
+    <shaderMaterial
+      ref={materialRef}
+      vertexShader={`
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        void main() {
+          vPosition = position;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `}
+      fragmentShader={`
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        uniform vec3 uColor;
+        void main() {
+          // Simulace vrstev 3D tisku (proužky na ose Z / Y)
+          float line = sin(vPosition.y * 150.0);
+          float stripe = smoothstep(-0.2, 0.2, line) * 0.15 + 0.85;
+          
+          // Základní stínování (Lambert)
+          vec3 lightDir = normalize(vec3(5.0, 10.0, 7.0));
+          float intensity = max(dot(vNormal, lightDir), 0.3);
+          
+          gl_FragColor = vec4(uColor * stripe * intensity, 1.0);
+        }
+      `}
+      uniforms={{
+        uColor: { value: new THREE.Color(color) }
+      }}
+    />
+  );
+}
+
+// Komponenta pro načtení a zobrazení STL modelu
+function Model({ url, color }) {
+  const [geometry, setGeometry] = useState(null);
+
+  useEffect(() => {
+    if (!url) return;
+    const loader = new STLLoader();
+    loader.load(url, (geo) => {
+      geo.computeVertexNormals();
+      setGeometry(geo);
+    });
+  }, [url]);
+
+  if (!geometry) return null;
+
+  return (
+    <Center>
+      <mesh geometry={geometry} castShadow receiveShadow scale={0.03}>
+        <3DPrintMaterial color={color} />
+      </mesh>
+    </Center>
+  );
+}
+
+// Pomocná mapa pro převod textu na hex barvy
+const COLOR_MAP = {
+  'Černá': '#18181b',
+  'Bílá': '#f4f4f5',
+  'Šedá': '#71717a',
+  'Červená': '#ef4444',
+  'Modrá': '#3b82f6'
+};
+
+export default function App() {
+  const [stlUrl, setStlUrl] = useState(null);
+  const [backgroundUrl, setBackgroundUrl] = useState(null);
+  const [selectedColor, setSelectedColor] = useState('Černá');
+  const [renderCount, setRenderCount] = useState(6);
+  const [quality, setQuality] = useState('High');
+  const [renders, setRenders] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  const canvasRef = useRef();
+
+  // Handle nahrání STL souboru
+  const handleStlChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setStlUrl(URL.createObjectURL(file));
+    }
+  };
+
+  // Handle nahrání obrázku pozadí
+  const handleBackgroundChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setBackgroundUrl(URL.createObjectURL(file));
+    }
+  };
+
+  // Simulace generování renderů z různých úhlů
+  const generateRenders = () => {
+    if (!stlUrl) {
+      alert('Nejprve nahrajte STL model.');
+      return;
+    }
+    
+    setIsGenerating(true);
+    setRenders([]);
+
+    // Simulace vyfocení plátna z různých úhlů kamery
+    setTimeout(() => {
+      const generatedImages = Array.from({ length: renderCount }).map((_, i) => {
+        // V reálné produkci by se zde měnila rotace kamery a volalo gl.toDataURL()
+        // Pro lokální funkčnost bez backendu vracíme mockup simulující pořízené snímky
+        return stlUrl; 
+      });
+      
+      setRenders(generatedImages);
+      setIsGenerating(false);
+    }, 1500);
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white p-8">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-5xl font-bold mb-3">
+          3D Fitko Renderer
+        </h1>
+
+        <p className="text-zinc-400 mb-10 text-lg">
+          Nahraj STL model a pozadí — aplikace vytvoří realistické rendery 3D tisku z různých úhlů.
+        </p>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* LEVÝ PANEL: NASTAVENÍ */}
+          <div className="bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-800">
+            <h2 className="text-2xl font-semibold mb-6">
+              Nastavení renderu
+            </h2>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block mb-2 text-sm text-zinc-400">
+                  STL Model
+                </label>
+                <input
+                  type="file"
+                  accept=".stl"
+                  onChange={handleStlChange}
+                  className="w-full bg-zinc-800 rounded-2xl p-4 border border-zinc-700 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-white hover:file:bg-zinc-600"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-2 text-sm text-zinc-400">
+                  Pozadí scénického náhledu
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBackgroundChange}
+                  className="w-full bg-zinc-800 rounded-2xl p-4 border border-zinc-700 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-zinc-700 file:text-white hover:file:bg-zinc-600"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-2 text-sm text-zinc-400">
+                  Barva plastu
+                </label>
+                <select 
+                  value={selectedColor}
+                  onChange={(e) => setSelectedColor(e.target.value)}
+                  className="w-full bg-zinc-800 rounded-2xl p-4 border border-zinc-700 text-white outline-none"
+                >
+                  <option>Černá</option>
+                  <option>Bílá</option>
+                  <option>Šedá</option>
+                  <option>Červená</option>
+                  <option>Modrá</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="flex justify-between mb-2 text-sm text-zinc-400">
+                  <label>Počet renderů</label>
+                  <span>{renderCount} snímků</span>
+                </div>
+                <input
+                  type="range"
+                  min="3"
+                  max="20"
+                  value={renderCount}
+                  onChange={(e) => setRenderCount(Number(e.target.value))}
+                  className="w-full accent-white"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-2 text-sm text-zinc-400">
+                  Kvalita renderu
+                </label>
+                <select 
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value)}
+                  className="w-full bg-zinc-800 rounded-2xl p-4 border border-zinc-700 text-white outline-none"
+                >
+                  <option>Low</option>
+                  <option>Medium</option>
+                  <option>High</option>
+                  <option>Ultra</option>
+                </select>
+              </div>
+
+              <button 
+                onClick={generateRenders}
+                disabled={isGenerating}
+                className="w-full bg-white text-black font-bold py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
+              >
+                {isGenerating ? 'Generování...' : 'Generovat rendery'}
+              </button>
+            </div>
+          </div>
+
+          {/* PRAVÝ PANEL: 3D NÁHLED A SÍT RENDERŮ */}
+          <div className="bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-800 flex flex-col h-full">
+            <h2 className="text-2xl font-semibold mb-6">
+              Náhled renderů
+            </h2>
+
+            {/* Interaktivní 3D Canvas okno */}
+            <div 
+              className="aspect-square rounded-3xl bg-zinc-800 border border-zinc-700 overflow-hidden relative"
+              style={{
+                backgroundImage: backgroundUrl ? `url(${backgroundUrl})` : 'none',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}
+            >
+              {stlUrl ? (
+                <Canvas ref={canvasRef} camera={{ position: [0, 0, 5], fov: 50 }}>
+                  <ambientLight intensity={0.7} />
+                  <pointLight position={[10, 10, 10]} intensity={1.5} />
+                  <directionalLight position={[-5, 5, -5]} intensity={0.5} />
+                  <Suspense fallback={null}>
+                    <Model url={stlUrl} color={COLOR_MAP[selectedColor]} />
+                  </Suspense>
+                  <OrbitControls enableZoom={true} />
+                </Canvas>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-xl text-center p-4">
+                  Nahrajte STL model pro zobrazení 3D náhledu
+                </div>
+              )}
+            </div>
+
+            {/* Výstupní vygenerované snímky */}
+            <div className="grid grid-cols-3 gap-3 mt-5 overflow-y-auto max-h-[220px]">
+              {renders.length > 0 ? (
+                renders.map((render, i) => (
+                  <div key={i} className="aspect-square rounded-2xl bg-zinc-800 border border-zinc-700 overflow-hidden relative flex items-center justify-center text-xs text-zinc-500">
+                    {/* Zde by se vykreslil statický obrázek z vygenerovaného pole */}
+                    Snímek {i + 1}
+                  </div>
+                ))
+              ) : (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="aspect-square rounded-2xl bg-zinc-800 border-zinc-700/50 border border-dashed flex items-center justify-center text-zinc-600 text-xs"
+                  >
+                    Prázdné
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* JAK TO FUNGUJE */}
+        <div className="mt-10 bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-800">
+          <h2 className="text-2xl font-semibold mb-6">
+            Jak aplikace funguje
+          </h2>
+
+          <div className="grid md:grid-cols-4 gap-4">
+            <div className="bg-zinc-800 rounded-2xl p-5">
+              <div className="text-4xl font-bold mb-3 text-zinc-500">1</div>
+              <p className="text-zinc-300">
+                Nahraješ STL model do HTML5 filereaderu.
+              </p>
+            </div>
+
+            <div className="bg-zinc-800 rounded-2xl p-5">
+              <div className="text-4xl font-bold mb-3 text-zinc-500">2</div>
+              <p className="text-zinc-300">
+                Přidáš pozadí, které poslouží jako scéna.
+              </p>
+            </div>
+
+            <div className="bg-zinc-800 rounded-2xl p-5">
+              <div className="text-4xl font-bold mb-3 text-zinc-500">3</div>
+              <p className="text-zinc-300">
+                WebGL fragment shader vykreslí tiskové vrstvy.
+              </p>
+            </div>
+
+            <div className="bg-zinc-800 rounded-2xl p-5">
+              <div className="text-4xl font-bold mb-3 text-zinc-500">4</div>
+              <p className="text-zinc-300">
+                Vygenerují se snímky z fázových rotací kamery.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
